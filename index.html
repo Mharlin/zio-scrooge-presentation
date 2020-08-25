@@ -1,0 +1,436 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>ZIO - Scala Future as you want it to behave</title>
+
+    <link rel="stylesheet" href="dist/reset.css">
+    <link rel="stylesheet" href="dist/reveal.css">
+    <link rel="stylesheet" href="dist/theme/black.css" id="theme">
+
+    <!-- Theme used for syntax highlighted code -->
+    <link rel="stylesheet" href="plugin/highlight/monokai.css" id="highlight-theme">
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section data-markdown>
+          <script type="text/template">
+            ## Team Scrooge
+            <img src="./images/scrooge.jpg" height="400px" />
+
+          </script>
+        </section>
+        <section>
+          <section data-markdown>
+            <script type="text/template">
+              ## Mostly irrelevant
+              ```stacktrace [|1, 3]
+PostgresException: Syntax error at or near 42
+ at example$.getConnection(example.scala:43)
+ at example$.$anonfun$asyncDbCall$1(example.scala:23)
+ at scala.concurrent.Future$.$anonfun$apply$1(Future.scala:658)
+ at scala.util.Success.$anonfun$map$1(Try.scala:255)
+ at scala.util.Success.map(Try.scala:213)
+ at scala.concurrent.Future.$anonfun$map$1(Future.scala:292)
+ at scala.concurrent.impl.Promise.liftedTree1$1(Promise.scala:33)
+ at scala.concurrent.impl.Promise.$anonfun$transform$1(Promise.scala:33)
+ at scala.concurrent.impl.CallbackRunnable.run(Promise.scala:64)
+ at java.util.concurrent.ForkJoinTask$RunnableExecuteAction.exec(ForkJoinTask.java:1402)
+ at java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:289)
+ at java.util.concurrent.ForkJoinPool$WorkQueue.runTask(ForkJoinPool.java:1056)
+ at java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:1692)
+ at java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:157)
+            ```
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ```scala
+def asyncDbCall(sql: SQL): Future[Result]
+def selectHumans(): Future[Result] = asyncDbCall(...)
+def selectPets(): Future[Result] = asyncDbCall(...)
+              ```
+            </script>
+          </section>
+        </section>
+        <section data-markdown>
+          <script type="text/template">
+            <img src="./images/zio_logo.png" />
+
+            Scala Future as you want it to behave
+Note:
+Type-safe <br/>
+Composable asyncronous <br/>
+Concurrent
+          </script>
+        </section>
+
+        <section>
+          <section data-markdown>
+            <script type="text/template">
+              ## Execution context is like a cocroach
+              <img src="./images/cockroache.webp" />
+
+              ```
+              def action(...)(implicit ec: ExecutionContext)
+              ```
+              <!-- .element: class="fragment"  data-fragment-index="1"-->
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ```scala
+def apply[T](body: => T)
+  (implicit executor: ExecutionContext): Future[T]
+
+def map[S](f: T => S)
+  (implicit executor: ExecutionContext): Future[S]
+
+def flatMap[S](f: T => Future[S])
+  (implicit executor: ExecutionContext): Future[S]
+
+def onComplete[U](f: Try[T] => U)
+  (implicit executor: ExecutionContext): Unit
+
+def foreach[U](f: T => U)
+  (implicit executor: ExecutionContext): Unit
+              ```
+Note:
+It propagates all over the code. Down to the last method in the call chain
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ### A Future is eager to execute
+
+              <table>
+              <tr>
+              <td>
+              <img src="./images/running.png" width="250px" />
+
+              Future
+              </td>
+              <td>
+              <img src="./images/todo_running.jpg" width="300px" style="border:0;margin:0;padding:0" />
+
+              ZIO Effect
+              </td>
+              </tr>
+              </table>
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ```scala
+              for {
+                _ <- Future(println("hello"))
+                _ <- Future(println("hello"))
+              } yield ()
+              ```
+              ```scala
+              hello
+              hello
+              ```
+              <!-- .element: class="fragment"  data-fragment-index="1"-->
+
+              ```scala
+
+              val f = Future(println("hello"))
+              for {
+                _ <- f
+                _ <- f
+              } yield ()
+              ```
+              <!-- .element: class="fragment"  data-fragment-index="2"-->
+
+              ```scala
+              hello
+              ```
+              <!-- .element: class="fragment"  data-fragment-index="3"-->
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ## Referential transparency
+              Any expression can be replaced with its value without changing the program’s behaviour
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ```scala
+              val a = Task(println("hello"))
+              val result = for {
+                _ <- a
+                _ <- a
+              } yield ()
+              ```
+              ```scala
+              val result: zio.ZIO[Any,Throwable,Unit] = zio.ZIO$FlatMap@7ff7ed82
+              ```
+              <!-- .element: class="fragment"  data-fragment-index="1"-->
+
+              ```scala
+
+              Runtime.default.unsafeRun(result)
+              # hello
+              # hello
+              ```
+              <!-- .element: class="fragment"  data-fragment-index="2"-->
+            </script>
+          </section>
+        </section>
+
+        <section>
+          <section data-markdown>
+            <script type="text/template">
+              <img src="./images/error.png" />
+Note:
+Error handling
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ```scala[1, 3|]
+              def getPerson(id: Int): Future[Person] = ...
+
+              getPerson(...)
+                .recover {
+                  case InvalidIdException => ...
+                }
+              ```
+Note:
+What are the expected error types
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ### Either
+              ```scala[1-4|6-9|9-12|]
+              sealed trait PersonError
+              case object InvalidIdException extends PersonError
+
+              def getPerson(id: Int): Either[PersonError, Person] = ...
+
+              (for {
+                person <- getPerson(...)
+                friends <- findFriends(person)
+              } yield friends).match {
+                case Left(PersonError) => // Handle error
+                case Rigth(friends) => // Handle success result
+              }
+              ```
+
+              ```scala
+              def getPerson(id: Int): Future[Either[PersonError, Person]] = ...
+
+              (for {
+                person <- getPerson(...)
+                friends <- findFriends(person)
+              } yield friends).onComplete {
+                case Success(Left(PersonError)) => // Handle Future success with PersonError
+                case Success(Right(friends)) => // Handle success
+                case Failure(e) => // unexpected exception
+              }
+              ```
+              <!-- .element: class="fragment"  data-fragment-index=""-->
+Note:
+Either rigth biased since scala 2.12
+Future will only stop the for comprehension on unexpected errors
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ```scala
+              def getPerson(id: Int): IO[PersonError, Person] = ...
+              ```
+              ```scala
+              def findFriends(person: Person): UIO[Seq[Person]] = ...
+              ```
+              <!-- .element: class="fragment"  data-fragment-index="1"-->
+              ```scala[1|1,3-5|1,7-9|1, 11]
+              ZIO[R, E, A] // Requirements, Failure type, Success type
+
+              type UIO[A] = ZIO[Any, Nothing, A] // Can't fail
+
+              type URIO[R, A] = ZIO[R, Nothing, A] // Can't fail
+
+              type Task[A] = ZIO[Any, Throwable, A] // Fails with Throwable
+
+              type RIO[R, A] = ZIO[R, Throwable, A] // Fails with Throwable
+
+              type IO[E, A] = ZIO[Any, E, A] // Fails with E
+              ```
+              <!-- .element: class="fragment"  data-fragment-index=""-->
+Note:
+Type definition from println example ZIO[Any, Throwable, Unit]
+            </script>
+          </section>
+        </section>
+        <section>
+          <section data-markdown>
+            <script type="text/template">
+              # Execution trace
+              <img src="./images/executiontrace.jpg" height="400px" />
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ```scala
+              def asyncDbCall(sql: SQL): Task[Result]
+              val selectHumans: Task[Result] = asyncDbCall(...)
+              val selectPets: Task[Result] = asyncDbCall(...)
+              ```
+              ```[1-2|3|4-5]
+              Fiber:0 ZIO Execution trace:
+               at asyncDbCall(example.scala:22)
+               at selectHumans(example.scala:26)
+               Fiber:0 was supposed to continue to:
+               a future continuation at selectHumans(example.scala:27)
+              ```
+              <!-- .element: class="fragment"  data-fragment-index=""-->
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ### Procedural
+              ```scala
+              def doWork(condition: Boolean) = {
+                if (condition) {
+                  doSideWork()
+                }
+                doMainWork()
+              }
+              ```
+              ```
+              java.lang.Exception: Worker failed!
+               at example$.doMainWork(example.scala:54)
+               at example$.doWork(example.scala:50)
+               at example$$anon$1.run(example.scala:60)
+              ```
+              <!-- .element: class="fragment"  data-fragment-index=""-->
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ```scala
+              def doWork(condition: Boolean) =
+              for {
+               _ <- IO.when(condition)(doSideWork)
+               _ <- doMainWork
+              } yield ()
+              ```
+              ```
+              Fiber:0 ZIO Execution trace:
+               at example$.doMainWork(example.scala:27)
+               at example$.doWork(example.scala:23)
+               at example$.doSideWork(example.scala:26)
+              ```
+              <!-- .element: class="fragment"  data-fragment-index=""-->
+            </script>
+          </section>
+        </section>
+        <section>
+          <section data-markdown>
+            <script type="text/template">
+              <img src="./images/back_to_the_future.jpg" />
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+            ```scala[1-2|4-5|7-8]
+            Task.fromFuture { implicit ec => asyncDbCall(...) }
+            # Task[Result]
+
+            zioDbAction(...).toFuture
+            # Task[Future[Result]]
+
+            Runtime.default.unsafeRunToFuture(zioDbAction(...))
+            # Future[Result]
+            ```
+Note:
+From Future function is an anonymous function to avoid executing the Future eagerly
+            </script>
+          </section>
+        </section>
+        <section>
+          <section data-markdown>
+            <script type="text/template">
+              ## Runtime (time to run)
+              <img src="./images/time_to_run.jpg" width="600px" />
+Note:
+The effects should only be executed at the edge of the program
+In the case of services a good place is where the handlers are initialized
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              ```scala
+              Runtime.default
+              Console
+              Blocking
+              System
+              Clock
+              Random
+              Scheduler
+              ```
+              ```scala
+              Runtime.default.unsafeRun(zioDbAction(...))
+              ```
+              <!-- .element: class="fragment"  data-fragment-index=""-->
+            </script>
+          </section>
+          <section data-markdown>
+            <script type="text/template">
+              # Blocking
+              ```scala[4-5|3|7]
+              def storeInStorage(file: Array[Byte]) =>
+                for {
+                  stream <- ZIO.access[StorageClient](_.store(Temporary))
+                  _ <- effectBlocking(stream.write(file))
+                        .ensuring(UIO(stream.close()))
+                } yield stream.id()
+              # ZIO[Blocking with StorageClient, Throwable, UUID]
+              ```
+              ```scala[1-3|4|]
+              val blocking = Blocking.live
+              val storageClient = 
+                ZLayer.succeed(CassandraStorageClient.storageClient)
+              # ZLayer[Any, Nothing, StorageClient]
+
+              storeInStorage(file).provideLayer(Blocking ++ storageClient)
+              # Task[UUID]
+              ```
+              <!-- .element: class="fragment"  data-fragment-index=""-->
+            </script>
+          </section>
+        </section>
+        <section data-markdown>
+          <script type="text/template">
+            # Thank you <!-- .element: class="fragment"  data-fragment-index=""-->
+Note:
+ZIO is > 50x faster than Future
+          </script>
+        </section>
+      </div>
+    </div>
+
+    <script src="dist/reveal.js"></script>
+    <script src="plugin/notes/notes.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script src="plugin/highlight/highlight.js"></script>
+    <script>
+      // More info about initialization & config:
+      // - https://revealjs.com/initialization/
+      // - https://revealjs.com/config/
+      Reveal.initialize({
+        hash: true,
+
+        // Learn about plugins: https://revealjs.com/plugins/
+        plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
+      });
+    </script>
+  </body>
+</html>
